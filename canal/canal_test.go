@@ -75,10 +75,11 @@ func (s *canalTestSuite) TearDownSuite(c *C) {
 	c.Logf("Start testing the heartbeat and read timeout")
 	time.Sleep(time.Second)
 
-	if s.c != nil {
-		s.c.Close()
-		s.c = nil
-	}
+	//if s.c != nil {
+	c.Assert(s.c, Not(IsNil))	
+	s.c.Close()
+	s.c = nil
+	//}
 }
 
 func (s *canalTestSuite) execute(c *C, query string, args ...interface{}) *mysql.Result {
