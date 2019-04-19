@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
+	"os"
 	"testing"
 	"time"
 
@@ -73,10 +74,12 @@ func (s *canalTestSuite) SetUpSuite(c *C) {
 func (s *canalTestSuite) TearDownSuite(c *C) {
 	// To test the heartbeat and read timeout,so need to sleep 1 seconds without data transmission
 	c.Logf("Start testing the heartbeat and read timeout")
+	fmt.Fprintf(os.Stderr,"Start testing the heartbeat and read timeout")
+	fmt.Fprintf(os.Stdout,"Start testing the heartbeat and read timeout")
 	time.Sleep(time.Second)
 
 	//if s.c != nil {
-	c.Assert(s.c, Not(IsNil))	
+	//c.Assert(s.c, Not(IsNil))	
 	s.c.Close()
 	s.c = nil
 	//}
