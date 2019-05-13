@@ -3,10 +3,11 @@ package canal
 import (
 	"fmt"
 	"regexp"
+	"sync/atomic"
 	"time"
 
 	"github.com/pingcap/errors"
-	"github.com/satori/go.uuid"
+	uuid "github.com/satori/go.uuid"
 	"github.com/siddontang/go-log/log"
 	"github.com/siddontang/go-mysql/mysql"
 	"github.com/siddontang/go-mysql/replication"
@@ -55,6 +56,10 @@ func (c *Canal) runSyncBinlog() error {
 		if err != nil {
 			return errors.Trace(err)
 		}
+
+		// Update the delay between the Canal and the Master before the handler hooks are called
+		c.updateReplicationDelay(ev)
+
 		savePos = false
 		force = false
 		pos := c.master.Position()
@@ -92,13 +97,13 @@ func (c *Canal) runSyncBinlog() error {
 			}
 			continue
 		case *replication.XIDEvent:
-			if e.GSet != nil {
-				c.master.UpdateGTIDSet(e.GSet)
-			}
 			savePos = true
 			// try to save the position later
 			if err := c.eventHandler.OnXID(pos); err != nil {
 				return errors.Trace(err)
+			}
+			if e.GSet != nil {
+				c.master.UpdateGTIDSet(e.GSet)
 			}
 		case *replication.MariadbGTIDEvent:
 			// try to save the GTID later
@@ -119,9 +124,6 @@ func (c *Canal) runSyncBinlog() error {
 				return errors.Trace(err)
 			}
 		case *replication.QueryEvent:
-			if e.GSet != nil {
-				c.master.UpdateGTIDSet(e.GSet)
-			}
 			var (
 				mb    [][]byte
 				db    []byte
@@ -159,6 +161,9 @@ func (c *Canal) runSyncBinlog() error {
 			if err = c.eventHandler.OnDDL(pos, e); err != nil {
 				return errors.Trace(err)
 			}
+			if e.GSet != nil {
+				c.master.UpdateGTIDSet(e.GSet)
+			}
 		default:
 			continue
 		}
@@ -166,13 +171,17 @@ func (c *Canal) runSyncBinlog() error {
 		if savePos {
 			c.master.Update(pos)
 			c.master.UpdateTimestamp(ev.Header.Timestamp)
-			if err := c.eventHandler.OnPosSynced(pos, force); err != nil {
+			if err := c.eventHandler.OnPosSynced(pos, c.master.GTIDSet(), force); err != nil {
 				return errors.Trace(err)
 			}
 		}
 	}
 
 	return nil
+}
+
+func (c *Canal) updateReplicationDelay(ev *replication.BinlogEvent) {
+	atomic.AddUint32(c.delay, uint32(time.Now().Unix()) - ev.Header.Timestamp)
 }
 
 func (c *Canal) handleRowsEvent(e *replication.BinlogEvent) error {
